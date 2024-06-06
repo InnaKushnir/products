@@ -3,17 +3,21 @@ import secrets
 import time
 from functools import wraps
 
-from flask import Flask, g, request, jsonify, redirect, render_template, url_for, session
-from flask_migrate import Migrate
-from flask_sqlalchemy import SQLAlchemy
-from flask_jsonrpc import JSONRPC
 import redis
+from flask import Flask, g, request, jsonify, redirect, render_template, url_for, session, flash
+from flask_jsonrpc import JSONRPC
+from flask_migrate import Migrate
+from flask_security.utils import hash_password
+from flask_sqlalchemy import SQLAlchemy
+from pydantic import ValidationError
 
-import services, schemas
+import schemas
+import services
 from db.database import SessionLocal
 # from forms import RegistrationForm
 from db.models import db, Address
 from forms import RegistrationForm
+from tasks import track_order_status
 
 # from tasks import track_order_status
 
@@ -162,7 +166,7 @@ def delete_product_route(product_id: int):
 
 
 @app.route("/addresses/", methods=["GET"])
-@login_required
+# @login_required
 def get_addresses():
     with get_db() as db:
         street_filter = request.args.get("street", None)
@@ -192,7 +196,6 @@ def get_addresses():
 
 
 @app.route("/addresses/<int:address_id>/", methods=["GET"])
-@login_required
 def get_address_by_id(address_id: int):
     with get_db() as db:
         address = services.get_address_by_id(db, address_id)
@@ -203,7 +206,6 @@ def get_address_by_id(address_id: int):
 
 
 @app.post("/addresses/")
-@login_required
 def create_address():
     with get_db() as db:
         address_data = request.get_json()
@@ -226,7 +228,6 @@ def create_address():
 
 
 @app.put("/addresses/<int:address_id>/")
-@login_required
 def update_address(address_id: int):
     with get_db() as db:
         address = services.get_address_by_id(db, address_id)
@@ -253,7 +254,6 @@ def update_address(address_id: int):
 
 
 @app.delete("/addresses/<int:address_id>/")
-@admin_required
 def delete_address_route(address_id: int):
     with get_db() as db:
         address = services.get_address_by_id(db, address_id)
@@ -266,7 +266,6 @@ def delete_address_route(address_id: int):
 
 
 @app.route("/orders/", methods=["GET"])
-@login_required
 def get_orders():
     db = SessionLocal()
     orders = services.get_orders(db)
@@ -275,7 +274,6 @@ def get_orders():
 
 
 @app.route("/orders/<int:order_id>/", methods=["GET"])
-@login_required
 def get_order_by_id(order_id: int):
     with get_db() as db:
         order = services.get_order_by_id(db, order_id)
@@ -304,7 +302,6 @@ def get_order_by_id(order_id: int):
 
 
 @app.get("/orders/<int:order_id>/status/")
-@login_required
 def get_order_status(order_id: int):
     with get_db() as db:
         order = services.get_order_status_by_id(db, order_id)
@@ -312,7 +309,6 @@ def get_order_status(order_id: int):
 
 
 @app.route("/orders/", methods=["POST"])
-@login_required
 def create_order():
     order_data = request.get_json()
 
@@ -331,7 +327,6 @@ def create_order():
 
 
 @app.put("/orders/<int:order_id>/status/")
-@admin_required
 def update_order_status(order_id: int):
     with get_db() as db:
         order = services.get_order_by_id(db, order_id)
@@ -415,6 +410,13 @@ def login():
         return render_template('login.html')
 
 
+@app.route('/logout/')
+def logout():
+    db.session.pop('user', None)
+    db.session.pop('is_admin', None)
+    return redirect(url_for('login'))
+
+
 @app.route('/dashboard/')
 def dashboard():
     if 'user' not in session:
@@ -424,18 +426,21 @@ def dashboard():
     return render_template('dashboard.html', user={'username': username})
 
 
-@app.route('/register/', methods=['GET', 'POST'])
+@app.route('/register', methods=['GET', 'POST'])
 def register():
     form = RegistrationForm()
-    if request.method == 'POST' and form.validate_on_submit():
-        username = form.username.data
-        password = form.password.data
-        user_create = schemas.UserCreate(username=username, password=password)
-
-        if services.create_user(db, user_create):
+    if form.validate_on_submit():
+        user_create = schemas.UserCreate(
+            username=form.username.data,
+            password_hash=hash_password(form.password.data),
+            is_admin=False
+        )
+        success, error_message = services.create_user(db, user_create)
+        if success:
+            flash('Registration successful!', 'success')
             return redirect(url_for('login'))
         else:
-            return render_template('register.html', form=form, error='Username already exists')
+            flash(error_message, 'danger')
     return render_template('register.html', form=form)
 
 
@@ -448,14 +453,31 @@ def get_user_by_username(username):
         return {"message": "User not found"}, 404
 
 
+# @app.route("/users/<username>/", methods=["PUT"])
+# def update_user_by_username(username):
+#     user_data = request.json
+#     with get_db() as db:
+#         user = services.get_user_by_username(db, username)
+#         if user:
+#             updated_user = services.update_user(db, user, schemas.UserUpdate(**user_data))
+#             return jsonify({"id": updated_user.id, "username": updated_user.username, "is_admin": updated_user.is_admin})   #noqa
+#         return {"message": "User not found"}, 404
+
 @app.route("/users/<username>/", methods=["PUT"])
 def update_user_by_username(username):
     user_data = request.json
     with get_db() as db:
-        user = services.get_user_by_username(db, username)
+        user = get_user_by_username(db, username)
         if user:
-            updated_user = services.update_user(db, user, schemas.UserUpdate(**user_data))
-            return jsonify({"id": updated_user.id, "username": updated_user.username, "is_admin": updated_user.is_admin})   #noqa
+            try:
+                updated_user = services.update_user(db, user, schemas.UserUpdate(**user_data))
+                return jsonify({
+                    "id": updated_user.id,
+                    "username": updated_user.username,
+                    "is_admin": updated_user.is_admin
+                })
+            except ValidationError as e:
+                return {"message": str(e)}, 400
         return {"message": "User not found"}, 404
 
 

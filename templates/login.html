@@ -1,15 +1,19 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <div class="col text-center">
-    <h2>Welcome to the Catalog!</h2>
-   </div>
+    {% if error %}
+        <p>{{ error }}</p>
+    {% endif %}
 
-  <p>The best catalog for you:</p>
-  <ul>
-    <li><strong>Products:</strong> {{  }}</li>
-    <li><strong>Addresses:</strong> {{  }}</li>
-    <li><strong>Orders:</strong> {{  }}</li>
-  </ul>
+    <h1>Login</h1>
 
-{% endblock%}
+    <form action="/login/" method="post">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username">
+        <br>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password">
+        <br>
+        <input type="submit" value="Login">
+    </form>
+{% endblock %}

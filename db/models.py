@@ -1,11 +1,14 @@
+from enum import Enum
+
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
-from enum import Enum
 from werkzeug.security import generate_password_hash, check_password_hash
+
 from .database import Base
 
 db = SQLAlchemy()
+
 
 class User(Base):
     __tablename__ = 'users'

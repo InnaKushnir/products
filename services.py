@@ -148,6 +148,7 @@ def get_order_by_status(db: Session, status: str) -> models.Order:
     return db.query(models.Order).filter(models.Order.status == status).all()
 
 
+
 def get_user_by_username(db: Session, username: str) -> models.User:
     return db.query(models.User).filter(models.User.username == username).first()
 
@@ -163,17 +164,28 @@ def create_user(db: Session, user: schemas.UserCreate) -> models.Order:
     return new_user
 
 
+# def update_user(db: Session, user: models.User, user_update: schemas.UserUpdate) -> models.User:
+#     for field, value in user_update.model_dump(exclude_unset=True).items():
+#         setattr(user, field, value)
+#
+#     if user_update.password and user_update.password.get_secret_value():
+#         user.set_password(user_update.password.get_secret_value())
+#
+#     db.commit()
+#     db.refresh(user)
+#     return user
 def update_user(db: Session, user: models.User, user_update: schemas.UserUpdate) -> models.User:
-    for field, value in user_update.model_dump(exclude_unset=True).items():
-        setattr(user, field, value)
+    update_data = user_update.dict(exclude_unset=True)
 
-    if user_update.password and user_update.password.get_secret_value():
-        user.set_password(user_update.password.get_secret_value())
+    if 'password' in update_data:
+        user.set_password(update_data.pop('password').get_secret_value())
+
+    for field, value in update_data.items():
+        setattr(user, field, value)
 
     db.commit()
     db.refresh(user)
     return user
-
 
 def authenticate(db: Session, username, password):
     db_user = db.query(models.User).filter_by(username=username).first()

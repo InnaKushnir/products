@@ -61,4 +61,8 @@ wcwidth==0.2.6
 Werkzeug==2.3.6
 WTForms==3.0.1
 zipp==3.16.2
+dnspython==2.6.1
+email_validator==2.1.1
+idna==3.7
+pytz==2024.1
 

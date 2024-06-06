@@ -1,11 +1,13 @@
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from flask_sqlalchemy import SQLAlchemy
+
 from .database import engine, Base
 from .models import User, Product, SubAddress, Address, Order, OrderItem
 
-db = SQLAlchemy(metadata=Base.metadata)  # Використовуємо Base.metadata
+db = SQLAlchemy(metadata=Base.metadata)
 migrate = Migrate()
+
 
 def create_app():
     app = Flask(__name__)

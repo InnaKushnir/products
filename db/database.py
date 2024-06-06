@@ -1,10 +1,9 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.orm import sessionmaker
 
 load_dotenv()
 
@@ -19,11 +18,3 @@ engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    poolclass=QueuePool,
-    pool_pre_ping=True
-)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
