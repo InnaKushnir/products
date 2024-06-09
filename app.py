@@ -10,16 +10,17 @@ from flask_migrate import Migrate
 from flask_security.utils import hash_password
 from flask_sqlalchemy import SQLAlchemy
 from pydantic import ValidationError
+from werkzeug.security import check_password_hash, generate_password_hash
 
 import schemas
 import services
 from db.database import SessionLocal
-# from forms import RegistrationForm
-from db.models import db, Address
+from db.models import db, Address, User
+from db import models
 from forms import RegistrationForm
 from tasks import track_order_status
-
-# from tasks import track_order_status
+from flask_jwt_extended import JWTManager, get_jwt_identity
+from flask_jwt_extended import create_access_token, jwt_required
 
 
 try:
@@ -29,14 +30,22 @@ except redis.ConnectionError:
     print("Failed to connect to Redis.")
 
 secret_key = secrets.token_hex(32)
+secret_key_ = secrets.token_hex(32)
 
 app = Flask(__name__, template_folder='templates')
 jsonrpc = JSONRPC(app, '/json-rpc')
+app.config['JWT_SECRET_KEY'] = secret_key_
 app.config['SECRET_KEY'] = secret_key
-app.config["SQLALCHEMY_DATABASE_URI"] = f"mysql+pymysql://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}@{os.getenv('MYSQL_HOST')}:{os.environ.get('MYSQL_PORT')}/{os.getenv('MYSQL_DATABASE')}" # noqa
+# app.config["SQLALCHEMY_DATABASE_URI"] = f"mysql+pymysql://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}@{os.getenv('MYSQL_HOST')}:{os.environ.get('MYSQL_PORT')}/{os.getenv('MYSQL_DATABASE')}" # noqa
+# app.config["SQLALCHEMY_DATABASE_URI"] = f"mysql+pymysql://superuser:password@localhost:3306/product"
+app.config["SQLALCHEMY_DATABASE_URI"] = (
+    f"mysql+pymysql://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}@"
+    f"{os.getenv('MYSQL_HOST', 'db')}:{os.getenv('MYSQL_PORT', 3306)}/{os.getenv('MYSQL_DATABASE')}"
+)
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 
+migrate = Migrate(app, db)
+jwt = JWTManager(app)
 
 
 def get_db():
@@ -90,7 +99,9 @@ def get_products():
             in products]
         return products_dicts
 
+
 @app.route("/products/<int:product_id>/", methods=["GET"])
+# @login_required
 def get_product_by_id(product_id: int):
     with get_db() as db:
         prod = services.get_product_by_id(db, product_id)
@@ -102,7 +113,7 @@ def get_product_by_id(product_id: int):
 
 
 @app.post("/products/")
-
+# @login_required
 def create_product():
     with get_db() as db:
         prod_data = request.get_json()
@@ -126,7 +137,7 @@ def create_product():
         return jsonify(serialized_product)
 
 @app.put("/products/<int:product_id>/")
-@login_required
+# @login_required
 def update_product(product_id: int):
     with get_db() as db:
         prod = services.get_product_by_id(db, product_id)
@@ -153,7 +164,7 @@ def update_product(product_id: int):
 
 
 @app.delete("/products/<int:product_id>/")
-@admin_required
+# @admin_required
 def delete_product_route(product_id: int):
     with get_db() as db:
         product = services.get_product_by_id(db, product_id)
@@ -196,6 +207,7 @@ def get_addresses():
 
 
 @app.route("/addresses/<int:address_id>/", methods=["GET"])
+# @login_required
 def get_address_by_id(address_id: int):
     with get_db() as db:
         address = services.get_address_by_id(db, address_id)
@@ -228,6 +240,7 @@ def create_address():
 
 
 @app.put("/addresses/<int:address_id>/")
+# @login_required
 def update_address(address_id: int):
     with get_db() as db:
         address = services.get_address_by_id(db, address_id)
@@ -254,6 +267,7 @@ def update_address(address_id: int):
 
 
 @app.delete("/addresses/<int:address_id>/")
+# @admin_required
 def delete_address_route(address_id: int):
     with get_db() as db:
         address = services.get_address_by_id(db, address_id)
@@ -266,6 +280,7 @@ def delete_address_route(address_id: int):
 
 
 @app.route("/orders/", methods=["GET"])
+# @login_required
 def get_orders():
     db = SessionLocal()
     orders = services.get_orders(db)
@@ -274,6 +289,7 @@ def get_orders():
 
 
 @app.route("/orders/<int:order_id>/", methods=["GET"])
+# @login_required
 def get_order_by_id(order_id: int):
     with get_db() as db:
         order = services.get_order_by_id(db, order_id)
@@ -302,6 +318,7 @@ def get_order_by_id(order_id: int):
 
 
 @app.get("/orders/<int:order_id>/status/")
+# @login_required
 def get_order_status(order_id: int):
     with get_db() as db:
         order = services.get_order_status_by_id(db, order_id)
@@ -309,6 +326,7 @@ def get_order_status(order_id: int):
 
 
 @app.route("/orders/", methods=["POST"])
+# @login_required
 def create_order():
     order_data = request.get_json()
 
@@ -327,6 +345,7 @@ def create_order():
 
 
 @app.put("/orders/<int:order_id>/status/")
+# @login_required
 def update_order_status(order_id: int):
     with get_db() as db:
         order = services.get_order_by_id(db, order_id)
@@ -362,7 +381,7 @@ def delete_order(order_id: int):
 
 
 @app.route("/orders/status/", methods=["GET"])
-@login_required
+# @login_required
 def get_orders_by_status():
     status_query = request.args.get("status")
     if not status_query:
@@ -391,60 +410,53 @@ def get_orders_by_status():
         return jsonify(orders_data)
 
 
-@app.route('/login/', methods=['GET', 'POST'])
-def login():
-    if 'user' in session:
-        return redirect(url_for('dashboard'))
-
-    with get_db() as db:
-        if request.method == 'POST':
-            username = request.form['username']
-            password = request.form['password']
-            user = services.authenticate(db, username, password)
-            if user:
-                session['user'] = user.username
-                session['is_admin'] = user.is_admin
-                return redirect(url_for('dashboard'))
-            else:
-                return render_template('login.html', error='Invalid username or password')
-        return render_template('login.html')
-
-
-@app.route('/logout/')
-def logout():
-    db.session.pop('user', None)
-    db.session.pop('is_admin', None)
-    return redirect(url_for('login'))
-
-
-@app.route('/dashboard/')
-def dashboard():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
-    username = session['user']
-    return render_template('dashboard.html', user={'username': username})
-
-
-@app.route('/register', methods=['GET', 'POST'])
+@app.route('/register/', methods=['POST'])
 def register():
-    form = RegistrationForm()
-    if form.validate_on_submit():
-        user_create = schemas.UserCreate(
-            username=form.username.data,
-            password_hash=hash_password(form.password.data),
-            is_admin=False
-        )
-        success, error_message = services.create_user(db, user_create)
-        if success:
-            flash('Registration successful!', 'success')
-            return redirect(url_for('login'))
-        else:
-            flash(error_message, 'danger')
-    return render_template('register.html', form=form)
+    try:
+        data = request.json
+        username = data['username']
+        password = data['password']
+    except Exception as e:
+        return jsonify({"error": "Invalid data format"}), 400
+
+    try:
+        user_create = schemas.UserCreate(**data)
+    except ValidationError as e:
+        return jsonify({"error": "Invalid data format"}), 400
+
+    new_user = services.create_user(db, user_create)
+    db.session.add(new_user)
+    db.session.commit()
+
+    return jsonify({"message": "User registered successfully"}), 201
+
+
+@app.route('/login/', methods=['POST'])
+def login():
+    if not request.is_json:
+        return jsonify({"message": "Missing JSON in request"}), 400
+
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({"message": "Missing username or password"}), 400
+
+    access_token = create_access_token(identity=username)
+    return jsonify(access_token=access_token), 200
+
+
+@app.route("/protected", methods=["GET"])
+@jwt_required()
+def protected():
+    current_user = get_jwt_identity()
+    return jsonify(logged_in_as=current_user), 200
+
 
 
 @app.route("/users/<username>/", methods=["GET"])
+@login_required
 def get_user_by_username(username):
     with get_db() as db:
         user = services.get_user_by_username(db, username)
@@ -453,17 +465,10 @@ def get_user_by_username(username):
         return {"message": "User not found"}, 404
 
 
-# @app.route("/users/<username>/", methods=["PUT"])
-# def update_user_by_username(username):
-#     user_data = request.json
-#     with get_db() as db:
-#         user = services.get_user_by_username(db, username)
-#         if user:
-#             updated_user = services.update_user(db, user, schemas.UserUpdate(**user_data))
-#             return jsonify({"id": updated_user.id, "username": updated_user.username, "is_admin": updated_user.is_admin})   #noqa
-#         return {"message": "User not found"}, 404
+
 
 @app.route("/users/<username>/", methods=["PUT"])
+@login_required
 def update_user_by_username(username):
     user_data = request.json
     with get_db() as db:
@@ -482,6 +487,7 @@ def update_user_by_username(username):
 
 
 @app.route("/users/<username>/", methods=["DELETE"])
+@admin_required
 def delete_user_by_username(username):
     with get_db() as db:
         user = services.get_user_by_username(db, username)
