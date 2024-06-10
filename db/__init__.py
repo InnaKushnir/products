@@ -2,8 +2,7 @@ from flask import Flask
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 
-from .database import engine, Base
-from .models import User, Product, SubAddress, Address, Order, OrderItem
+from database import Base
 
 db = SQLAlchemy(metadata=Base.metadata)
 migrate = Migrate()
@@ -11,7 +10,7 @@ migrate = Migrate()
 
 def create_app():
     app = Flask(__name__)
-    app.config['SQLALCHEMY_DATABASE_URI'] = "mysql+pymysql://superuser:password@localhost/product"
+    app.config['SQLALCHEMY_DATABASE_URI'] = "mysql+pymysql://user1:password1@localhost/product1"
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     db.init_app(app)

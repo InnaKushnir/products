@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from .database import Base
+from database import Base
 
 db = SQLAlchemy()
 

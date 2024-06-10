@@ -7,7 +7,7 @@ services:
     volumes:
       - ./:/code
     command: >
-      sh -c "sleep 5 && flask db upgrade &&
+      sh -c "sleep 10 && flask db upgrade &&
              flask run --host=0.0.0.0 --port=8000"
 
     env_file:
@@ -26,10 +26,10 @@ services:
     ports:
       - "3307:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: "password"
-      MYSQL_DATABASE: "product"
-      MYSQL_USER: "superuser"
-      MYSQL_PASSWORD: "password"
+      MYSQL_ROOT_PASSWORD: "password1"
+      MYSQL_DATABASE: "product1"
+      MYSQL_USER: "user1"
+      MYSQL_PASSWORD: "password1"
 
 
   redis:

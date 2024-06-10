@@ -4,20 +4,17 @@ import time
 from functools import wraps
 
 import redis
-from flask import Flask, g, request, jsonify, redirect, render_template, url_for, session, flash
+from config import Config
+from flask import Flask, g, request, jsonify, redirect, url_for, session
 from flask_jsonrpc import JSONRPC
 from flask_migrate import Migrate
-from flask_security.utils import hash_password
 from flask_sqlalchemy import SQLAlchemy
 from pydantic import ValidationError
-from werkzeug.security import check_password_hash, generate_password_hash
 
 import schemas
 import services
-from db.database import SessionLocal
-from db.models import db, Address, User
-from db import models
-from forms import RegistrationForm
+from database import SessionLocal
+from models import db, Address
 from tasks import track_order_status
 from flask_jwt_extended import JWTManager, get_jwt_identity
 from flask_jwt_extended import create_access_token, jwt_required
@@ -38,10 +35,8 @@ app.config['JWT_SECRET_KEY'] = secret_key_
 app.config['SECRET_KEY'] = secret_key
 # app.config["SQLALCHEMY_DATABASE_URI"] = f"mysql+pymysql://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}@{os.getenv('MYSQL_HOST')}:{os.environ.get('MYSQL_PORT')}/{os.getenv('MYSQL_DATABASE')}" # noqa
 # app.config["SQLALCHEMY_DATABASE_URI"] = f"mysql+pymysql://superuser:password@localhost:3306/product"
-app.config["SQLALCHEMY_DATABASE_URI"] = (
-    f"mysql+pymysql://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}@"
-    f"{os.getenv('MYSQL_HOST', 'db')}:{os.getenv('MYSQL_PORT', 3306)}/{os.getenv('MYSQL_DATABASE')}"
-)
+app.config.from_object(Config)
+app.config["SQLALCHEMY_DATABASE_URI"] = f"mysql+pymysql://{os.getenv('MYSQL_USER')}:{os.getenv('MYSQL_PASSWORD')}@{os.getenv('MYSQL_HOST')}:{os.environ.get('MYSQL_PORT')}/{os.getenv('MYSQL_DATABASE')}" # noqa
 db = SQLAlchemy(app)
 
 migrate = Migrate(app, db)

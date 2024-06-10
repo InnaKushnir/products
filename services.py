@@ -1,7 +1,7 @@
 from sqlalchemy.orm import Session
 from typing import Any
 
-from db import models
+import models
 import schemas
 
 
